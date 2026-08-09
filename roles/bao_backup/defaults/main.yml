@@ -1,0 +1,18 @@
+---
+# Backup trio (D4): scheduled raft snapshot -> client-side encryption ->
+# push to local path or any S3-compatible endpoint.
+bao_api_port: 8200
+bao_tls_dir: /etc/openbao/tls
+bao_snapshot_cron: "0 */6 * * *"
+bao_snapshot_target: /var/backups/openbao
+bao_snapshot_keep: 28
+
+# age recipient public key for client-side encryption. Empty = NOT encrypted
+# (the script warns loudly). The private key belongs to the USER and is
+# never seen by bao-stack -- security model, principle 5.
+bao_snapshot_age_recipient: ""
+
+# Token with snapshot permission, sourced from this file on each node.
+# Lab task: replace with a response-wrapped or agent-issued short-lived
+# token flow (design §12 / upstream Operator Experience roadmap).
+bao_snapshot_token_file: /etc/openbao/snapshot-token

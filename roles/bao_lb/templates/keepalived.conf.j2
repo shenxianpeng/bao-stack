@@ -1,0 +1,20 @@
+# keepalived VIP for the bao access layer -- managed by bao-stack
+vrrp_script chk_haproxy {
+    script "/usr/bin/killall -0 haproxy"
+    interval 2
+    weight 2
+}
+
+vrrp_instance BAO_VIP {
+    state {{ 'MASTER' if bao_seq == 1 else 'BACKUP' }}
+    interface {{ bao_vip_interface }}
+    virtual_router_id {{ bao_vip_router_id }}
+    priority {{ 110 - (bao_seq * 10) }}
+    advert_int 1
+    virtual_ipaddress {
+        {{ bao_vip_address }}
+    }
+    track_script {
+        chk_haproxy
+    }
+}

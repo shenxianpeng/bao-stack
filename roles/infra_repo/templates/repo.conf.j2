@@ -1,0 +1,8 @@
+# bao-stack local package repository (air-gap install source)
+server {
+    listen {{ repo_port }};
+    server_name _;
+    root {{ repo_home }};
+    autoindex on;
+    access_log /var/log/nginx/bao-stack-repo.access.log;
+}

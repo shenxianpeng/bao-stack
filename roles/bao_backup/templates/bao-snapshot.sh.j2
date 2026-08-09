@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+# bao-stack raft snapshot -- managed by role bao_backup.
+#
+# Runs on every node (cron), but only the ACTIVE node takes a snapshot, so
+# the job survives failover without coordination. Snapshot -> client-side
+# encryption (age) -> push to target. See docs/runbook-restore.md.
+set -euo pipefail
+
+export BAO_ADDR="https://{{ inventory_hostname }}:{{ bao_api_port }}"
+export BAO_CACERT="{{ bao_tls_dir }}/ca.crt"
+
+TARGET="{{ bao_snapshot_target }}"
+KEEP="{{ bao_snapshot_keep }}"
+AGE_RECIPIENT="{{ bao_snapshot_age_recipient }}"
+TOKEN_FILE="{{ bao_snapshot_token_file }}"
+
+# Only the active node proceeds. /v1/sys/health returns HTTP 200 only when
+# initialized + unsealed + active. TODO(lab): verify status-code semantics
+# (design doc §12.3).
+code="$(curl -s -o /dev/null -w '%{http_code}' --cacert "$BAO_CACERT" \
+        "$BAO_ADDR/v1/sys/health" || echo 000)"
+if [ "$code" != "200" ]; then
+    echo "$(date -Is) not active (health=$code), skipping snapshot"
+    exit 0
+fi
+
+if [ ! -r "$TOKEN_FILE" ]; then
+    echo "$(date -Is) ERROR: token file $TOKEN_FILE missing" >&2
+    exit 1
+fi
+BAO_TOKEN="$(cat "$TOKEN_FILE")"
+export BAO_TOKEN
+
+stamp="$(date -u +%Y%m%d-%H%M%S)"
+tmp="$(mktemp -d)"
+trap 'rm -rf "$tmp"' EXIT
+snap="$tmp/{{ bao_cluster }}-${stamp}.snap"
+
+bao operator raft snapshot save "$snap"
+
+artifact="$snap"
+if [ -n "$AGE_RECIPIENT" ]; then
+    age -r "$AGE_RECIPIENT" -o "${snap}.age" "$snap"
+    rm -f "$snap"
+    artifact="${snap}.age"
+else
+    echo "$(date -Is) WARNING: storing snapshot UNENCRYPTED (no age recipient configured)"
+fi
+
+case "$TARGET" in
+    s3://*)
+        # S3-compatible endpoint (Garage / SeaweedFS / MinIO friendly).
+        # TODO(lab): finalize tooling choice (rclone vs aws cli) and config.
+        echo "$(date -Is) ERROR: s3 targets not wired up yet in v0.1 scaffold" >&2
+        exit 1
+        ;;
+    *)
+        install -m 0600 "$artifact" "$TARGET/$(basename "$artifact")"
+        # Retention: keep the newest $KEEP artifacts
+        ls -1t "$TARGET"/*.snap* 2>/dev/null | tail -n +$((KEEP + 1)) | xargs -r rm -f
+        ;;
+esac
+
+# Freshness marker for the snapshot-age alert (D5)
+date +%s > "$TARGET/.last-success" 2>/dev/null || true
+
+echo "$(date -Is) snapshot saved: $(basename "$artifact")"

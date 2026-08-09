@@ -1,0 +1,13 @@
+---
+# HAProxy access layer (D2): routes client traffic to the active node based
+# on /v1/sys/health. TLS passes through to OpenBao (no re-encrypt, no
+# termination) so the access layer never sees plaintext -- principle 5.
+bao_api_port: 8200
+bao_lb_port: 8443
+bao_tls_dir: /etc/openbao/tls
+
+# Optional keepalived VIP (common in gov/enterprise networks)
+bao_vip_enabled: false
+bao_vip_address: ""
+bao_vip_interface: eth0
+bao_vip_router_id: 51

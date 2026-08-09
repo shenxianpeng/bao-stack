@@ -1,0 +1,44 @@
+---
+# Host tuning for a secrets service: generous file handles, minimal swap
+# (secrets in memory must not hit disk -- mlock is enforced at the service
+# level in bao_config via LimitMEMLOCK + cap_ipc_lock), sane time sync.
+
+# Builtin modules only (no collection deps -- air-gap principle)
+- name: Write sysctl settings
+  ansible.builtin.copy:
+    dest: /etc/sysctl.d/90-bao-stack.conf
+    mode: "0644"
+    content: |
+      # bao-stack node tuning
+      {% for key, value in node_sysctl.items() %}
+      {{ key }} = {{ value }}
+      {% endfor %}
+  register: sysctl_file
+
+- name: Apply sysctl settings
+  ansible.builtin.command: sysctl --system
+  when: sysctl_file.changed
+  changed_when: true
+
+- name: Raise open-file limits
+  ansible.builtin.copy:
+    dest: /etc/security/limits.d/90-bao-stack.conf
+    mode: "0644"
+    content: |
+      # bao-stack: file handle limits
+      * soft nofile {{ node_nofile_limit }}
+      * hard nofile {{ node_nofile_limit }}
+
+- name: Check time synchronization status
+  ansible.builtin.command: timedatectl show --property=NTPSynchronized --value
+  register: ntp_sync
+  changed_when: false
+  failed_when: false
+
+- name: Warn when clock is not synchronized
+  ansible.builtin.debug:
+    msg: >-
+      WARNING: {{ inventory_hostname }} reports NTPSynchronized={{ ntp_sync.stdout }}.
+      Raft consensus and TLS both need sane clocks -- fix time sync before
+      going to production.
+  when: ntp_sync.stdout != "yes"

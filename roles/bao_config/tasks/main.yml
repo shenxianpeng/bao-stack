@@ -1,0 +1,27 @@
+---
+- name: Issue server TLS certificate from deployment CA
+  ansible.builtin.include_tasks: tls.yml
+  when: bao_tls == 'internal-ca'
+
+- name: Render openbao.hcl
+  ansible.builtin.template:
+    src: openbao.hcl.j2
+    dest: "{{ bao_config_dir }}/openbao.hcl"
+    owner: "{{ bao_user }}"
+    group: "{{ bao_group }}"
+    mode: "0640"
+  notify: Restart openbao
+
+- name: Render systemd unit
+  ansible.builtin.template:
+    src: openbao.service.j2
+    dest: /etc/systemd/system/openbao.service
+    mode: "0644"
+  notify: Restart openbao
+
+- name: Enable and start openbao
+  ansible.builtin.systemd:
+    name: openbao
+    state: started
+    enabled: true
+    daemon_reload: true

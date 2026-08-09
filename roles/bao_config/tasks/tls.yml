@@ -1,0 +1,96 @@
+---
+# Issue (or rotate) this node's server certificate from the deployment CA
+# living on the infra node. Plain openssl, no collection dependencies.
+# Sets bao_cert_changed when a new certificate was deployed (cert.yml uses
+# this to decide whether a rolling restart is needed).
+
+- name: Check current certificate expiry
+  ansible.builtin.command: >-
+    openssl x509 -checkend {{ cert_renew_days * 86400 }}
+    -in {{ bao_tls_dir }}/server.crt -noout
+  register: cert_check
+  changed_when: false
+  failed_when: false
+
+- name: Decide whether to (re)issue
+  ansible.builtin.set_fact:
+    cert_needs_issue: "{{ cert_force | default(false) | bool or cert_check.rc != 0 }}"
+    bao_cert_changed: false
+
+- name: Issue certificate
+  when: cert_needs_issue
+  block:
+    - name: Generate server private key
+      ansible.builtin.command: >-
+        openssl genrsa -out {{ bao_tls_dir }}/server.key 2048
+      args:
+        creates: "{{ bao_tls_dir }}/server.key"
+
+    - name: Generate CSR with node SANs
+      ansible.builtin.command: >-
+        openssl req -new -key {{ bao_tls_dir }}/server.key
+        -subj "/CN={{ inventory_hostname }}"
+        -addext "subjectAltName=IP:{{ inventory_hostname }},IP:127.0.0.1,DNS:localhost"
+        -out {{ bao_tls_dir }}/server.csr
+      changed_when: true
+
+    - name: Fetch CSR to controller
+      ansible.builtin.fetch:
+        src: "{{ bao_tls_dir }}/server.csr"
+        dest: "/tmp/bao-stack-csr/{{ inventory_hostname }}.csr"
+        flat: true
+
+    - name: Copy CSR to CA host
+      ansible.builtin.copy:
+        src: "/tmp/bao-stack-csr/{{ inventory_hostname }}.csr"
+        dest: "{{ ca_home }}/{{ inventory_hostname }}.csr"
+        mode: "0600"
+      delegate_to: "{{ groups['infra'] | first }}"
+
+    - name: Sign CSR with deployment CA
+      ansible.builtin.command: >-
+        openssl x509 -req -in {{ ca_home }}/{{ inventory_hostname }}.csr
+        -CA {{ ca_home }}/ca.crt -CAkey {{ ca_home }}/ca.key -CAcreateserial
+        -days {{ cert_days }} -sha256 -copy_extensions copy
+        -out {{ ca_home }}/{{ inventory_hostname }}.crt
+      delegate_to: "{{ groups['infra'] | first }}"
+      changed_when: true
+
+    - name: Read signed certificate from CA host
+      ansible.builtin.slurp:
+        src: "{{ ca_home }}/{{ inventory_hostname }}.crt"
+      register: signed_cert
+      delegate_to: "{{ groups['infra'] | first }}"
+
+    - name: Read CA certificate from CA host
+      ansible.builtin.slurp:
+        src: "{{ ca_home }}/ca.crt"
+      register: ca_cert
+      delegate_to: "{{ groups['infra'] | first }}"
+
+    - name: Deploy signed certificate
+      ansible.builtin.copy:
+        content: "{{ signed_cert.content | b64decode }}"
+        dest: "{{ bao_tls_dir }}/server.crt"
+        owner: "{{ bao_user }}"
+        group: "{{ bao_group }}"
+        mode: "0644"
+
+    - name: Deploy CA certificate
+      ansible.builtin.copy:
+        content: "{{ ca_cert.content | b64decode }}"
+        dest: "{{ bao_tls_dir }}/ca.crt"
+        owner: "{{ bao_user }}"
+        group: "{{ bao_group }}"
+        mode: "0644"
+
+    - name: Fix key ownership
+      ansible.builtin.file:
+        path: "{{ bao_tls_dir }}/server.key"
+        owner: "{{ bao_user }}"
+        group: "{{ bao_group }}"
+        mode: "0600"
+
+    - name: Mark certificate changed
+      ansible.builtin.set_fact:
+        bao_cert_changed: true

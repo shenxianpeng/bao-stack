@@ -1,0 +1,33 @@
+---
+- name: Create local snapshot target directory
+  ansible.builtin.file:
+    path: "{{ bao_snapshot_target }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+  when: not bao_snapshot_target.startswith('s3://')
+
+- name: Install snapshot script
+  ansible.builtin.template:
+    src: bao-snapshot.sh.j2
+    dest: /usr/local/bin/bao-snapshot
+    mode: "0750"
+
+- name: Schedule snapshots
+  ansible.builtin.cron:
+    name: bao-stack raft snapshot
+    job: /usr/local/bin/bao-snapshot >> /var/log/openbao/snapshot.log 2>&1
+    minute: "{{ bao_snapshot_cron.split()[0] }}"
+    hour: "{{ bao_snapshot_cron.split()[1] }}"
+    day: "{{ bao_snapshot_cron.split()[2] }}"
+    month: "{{ bao_snapshot_cron.split()[3] }}"
+    weekday: "{{ bao_snapshot_cron.split()[4] }}"
+
+- name: Warn when snapshot encryption is disabled
+  ansible.builtin.debug:
+    msg: >-
+      WARNING: bao_snapshot_age_recipient is empty -- snapshots will be
+      stored UNENCRYPTED. Set an age public key; the private key stays
+      with you (design principle 5).
+  when: bao_snapshot_age_recipient | length == 0

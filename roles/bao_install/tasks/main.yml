@@ -1,0 +1,58 @@
+---
+- name: Create openbao group
+  ansible.builtin.group:
+    name: "{{ bao_group }}"
+    system: true
+
+- name: Create openbao user
+  ansible.builtin.user:
+    name: "{{ bao_user }}"
+    group: "{{ bao_group }}"
+    system: true
+    shell: /usr/sbin/nologin
+    home: "{{ bao_data_dir }}"
+    create_home: false
+
+- name: Install openbao package from local repo
+  ansible.builtin.package:
+    name: "openbao{{ '-' + bao_version if bao_version else '' }}"
+    state: present
+
+- name: Create config / data / audit directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ bao_user }}"
+    group: "{{ bao_group }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - { path: "{{ bao_config_dir }}", mode: "0750" }
+    - { path: "{{ bao_tls_dir }}", mode: "0750" }
+    - { path: "{{ bao_data_dir }}", mode: "0700" }
+    - { path: "{{ bao_audit_dir }}", mode: "0750" }
+
+# Builtin modules only (no collection deps -- air-gap principle)
+- name: Check mlock capability on bao binary
+  ansible.builtin.command: getcap {{ bao_bin }}
+  register: bao_getcap
+  changed_when: false
+
+- name: Allow bao binary to mlock memory (keep secrets out of swap)
+  ansible.builtin.command: setcap cap_ipc_lock=+ep {{ bao_bin }}
+  when: "'cap_ipc_lock' not in bao_getcap.stdout"
+  changed_when: true
+
+- name: Install audit log rotation
+  ansible.builtin.copy:
+    dest: /etc/logrotate.d/openbao-audit
+    mode: "0644"
+    content: |
+      {{ bao_audit_dir }}/*.log {
+          daily
+          rotate 30
+          compress
+          delaycompress
+          missingok
+          notifempty
+          copytruncate
+      }

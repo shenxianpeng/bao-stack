@@ -1,0 +1,69 @@
+---
+- name: Install monitoring packages from local repo
+  ansible.builtin.package:
+    name: "{{ monitor_packages }}"
+    state: present
+
+- name: Create vmalert rules directory
+  ansible.builtin.file:
+    path: "{{ vmalert_rules_dir }}"
+    state: directory
+    mode: "0755"
+
+- name: Deploy alert rule sets
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: "{{ vmalert_rules_dir }}/"
+    mode: "0644"
+  with_fileglob:
+    - "{{ playbook_dir }}/files/alerts/*.yml"
+  notify: Restart vmalert
+
+- name: Provision Grafana datasource (VictoriaMetrics)
+  ansible.builtin.template:
+    src: grafana-datasource.yml.j2
+    dest: "{{ grafana_provisioning_dir }}/datasources/bao-stack.yml"
+    mode: "0644"
+  notify: Restart grafana
+
+- name: Provision Grafana dashboard provider
+  ansible.builtin.template:
+    src: grafana-dashboards.yml.j2
+    dest: "{{ grafana_provisioning_dir }}/dashboards/bao-stack.yml"
+    mode: "0644"
+  notify: Restart grafana
+
+- name: Create dashboards directory
+  ansible.builtin.file:
+    path: /var/lib/grafana/dashboards
+    state: directory
+    owner: grafana
+    group: grafana
+    mode: "0755"
+
+- name: Deploy dashboards
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: /var/lib/grafana/dashboards/
+    owner: grafana
+    group: grafana
+    mode: "0644"
+  with_fileglob:
+    - "{{ playbook_dir }}/files/dashboards/*.json"
+
+- name: Deploy scrape configuration
+  ansible.builtin.template:
+    src: scrape.yml.j2
+    dest: /etc/victoriametrics/scrape.yml
+    mode: "0644"
+  notify: Restart victoriametrics
+
+- name: Enable and start monitoring services
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    state: started
+    enabled: true
+  loop:
+    - victoriametrics
+    - vmalert
+    - grafana-server

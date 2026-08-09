@@ -1,0 +1,26 @@
+---
+# BAO module: install and configure an OpenBao HA cluster (raft integrated
+# storage), then bootstrap HA, the HAProxy access layer, and backup jobs.
+#
+# Idempotent: safe to re-run for scale-out (add hosts to the inventory group
+# first) or config convergence.
+
+- name: BAO | install & configure OpenBao
+  hosts: bao
+  become: true
+  roles:
+    - { role: bao_install, tags: [install] }
+    - { role: bao_config, tags: [config] }
+
+- name: BAO | bootstrap HA (init + raft join)
+  hosts: bao
+  become: true
+  roles:
+    - { role: bao_ha, tags: [ha] }
+
+- name: BAO | access layer & backups
+  hosts: bao
+  become: true
+  roles:
+    - { role: bao_lb, tags: [lb] }
+    - { role: bao_backup, tags: [backup] }

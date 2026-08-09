@@ -1,0 +1,84 @@
+---
+# HA bootstrap: initialize the cluster exactly once on the first node.
+# Raft join is handled by retry_join in openbao.hcl -- standbys join
+# automatically once initialized/unsealed.
+#
+# D3 (design doc): Shamir by default. Unseal is a HUMAN action by design;
+# this play never stores unseal keys on the managed nodes.
+
+- name: Wait for OpenBao API to listen
+  ansible.builtin.wait_for:
+    port: "{{ bao_api_port }}"
+    host: "{{ inventory_hostname }}"
+    timeout: 60
+
+- name: Query initialization status
+  ansible.builtin.uri:
+    url: "https://{{ inventory_hostname }}:{{ bao_api_port }}/v1/sys/init"
+    ca_path: "{{ bao_tls_dir }}/ca.crt"
+    return_content: true
+  register: init_status
+  run_once: true
+  delegate_to: "{{ groups['bao'] | first }}"
+
+- name: Initialize cluster on first node
+  when: not (init_status.json.initialized | bool)
+  run_once: true
+  delegate_to: "{{ groups['bao'] | first }}"
+  block:
+    - name: Run operator init
+      ansible.builtin.command: >-
+        bao operator init
+        -key-shares={{ bao_init_shares }}
+        -key-threshold={{ bao_init_threshold }}
+        -format=json
+      environment:
+        BAO_ADDR: "https://{{ inventory_hostname }}:{{ bao_api_port }}"
+        BAO_CACERT: "{{ bao_tls_dir }}/ca.crt"
+      register: init_out
+      no_log: true
+      changed_when: true
+
+    - name: Ensure controller secrets directory exists
+      ansible.builtin.file:
+        path: "{{ bao_init_out }}"
+        state: directory
+        mode: "0700"
+      delegate_to: localhost
+      become: false
+
+    - name: Save init output on the CONTROLLER only
+      ansible.builtin.copy:
+        content: "{{ init_out.stdout }}"
+        dest: "{{ bao_init_out }}/{{ bao_cluster }}-init.json"
+        mode: "0600"
+      delegate_to: localhost
+      become: false
+      no_log: true
+
+    - name: Post-init instructions
+      ansible.builtin.debug:
+        msg:
+          - "Cluster '{{ bao_cluster }}' initialized."
+          - "Unseal keys + root token written to {{ bao_init_out }}/{{ bao_cluster }}-init.json"
+          - "  (controller machine only -- NEVER stored on cluster nodes)."
+          - "ACT NOW:"
+          - "  1. Distribute the {{ bao_init_shares }} key shares to key holders"
+          - "     and DELETE the file (docs/runbook-unseal.md)."
+          - "  2. Unseal each node: bao operator unseal (x{{ bao_init_threshold }})."
+          - "  3. Standbys auto-join raft via retry_join once unsealed."
+
+- name: Report seal status per node
+  ansible.builtin.uri:
+    url: "https://{{ inventory_hostname }}:{{ bao_api_port }}/v1/sys/seal-status"
+    ca_path: "{{ bao_tls_dir }}/ca.crt"
+    return_content: true
+  register: seal_status
+  failed_when: false
+
+- name: Show sealed nodes
+  ansible.builtin.debug:
+    msg: >-
+      {{ inventory_hostname }} sealed={{ seal_status.json.sealed | default('unknown') }}
+      -- manual unseal required per docs/runbook-unseal.md
+  when: seal_status.json.sealed | default(true)

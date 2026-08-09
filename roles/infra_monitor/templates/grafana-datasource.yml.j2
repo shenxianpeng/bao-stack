@@ -1,0 +1,7 @@
+apiVersion: 1
+datasources:
+  - name: bao-stack
+    type: prometheus
+    access: proxy
+    url: http://127.0.0.1:{{ vm_port }}
+    isDefault: true

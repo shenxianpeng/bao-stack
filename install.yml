@@ -1,0 +1,11 @@
+---
+# bao-stack full installation: INFRA -> NODE -> BAO
+#
+#   ansible-playbook install.yml
+#
+# Each stage is also runnable on its own (infra.yml / node.yml / bao.yml).
+# The whole chain is idempotent: re-running converges, never destroys.
+
+- import_playbook: infra.yml
+- import_playbook: node.yml
+- import_playbook: bao.yml

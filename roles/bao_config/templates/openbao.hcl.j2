@@ -1,0 +1,34 @@
+# OpenBao server configuration -- managed by bao-stack (role bao_config).
+# Manual edits will be overwritten on the next playbook run.
+
+cluster_name = "{{ bao_cluster }}"
+ui           = {{ bao_ui | lower }}
+
+# D1: raft integrated storage is the only supported backend in v0.1
+storage "raft" {
+  path    = "{{ bao_data_dir }}"
+  node_id = "{{ bao_cluster }}-{{ bao_seq }}"
+{% for host in groups['bao'] | difference([inventory_hostname]) %}
+
+  retry_join {
+    leader_api_addr     = "https://{{ host }}:{{ bao_api_port }}"
+    leader_ca_cert_file = "{{ bao_tls_dir }}/ca.crt"
+  }
+{% endfor %}
+}
+
+listener "tcp" {
+  address            = "0.0.0.0:{{ bao_api_port }}"
+  cluster_address    = "{{ inventory_hostname }}:{{ bao_cluster_port }}"
+  tls_cert_file      = "{{ bao_tls_dir }}/server.crt"
+  tls_key_file       = "{{ bao_tls_dir }}/server.key"
+  tls_client_ca_file = "{{ bao_tls_dir }}/ca.crt"
+}
+
+api_addr     = "https://{{ inventory_hostname }}:{{ bao_api_port }}"
+cluster_addr = "https://{{ inventory_hostname }}:{{ bao_cluster_port }}"
+
+telemetry {
+  prometheus_retention_time = "{{ bao_telemetry_retention }}"
+  disable_hostname          = true
+}

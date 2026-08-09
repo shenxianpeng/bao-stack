@@ -1,0 +1,9 @@
+---
+# NODE module: per-host provisioning -- tuning, exporters, time sync checks.
+
+- name: NODE | host provisioning
+  hosts: all
+  become: true
+  roles:
+    - { role: node_tune, tags: [tune] }
+    - { role: node_exporter, tags: [exporter] }

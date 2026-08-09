@@ -1,0 +1,60 @@
+---
+# UPGRADE | rolling upgrade of an OpenBao cluster.
+#
+#   ansible-playbook upgrade.yml -e bao_version=<target>
+#
+# Order: standbys one at a time -> leader step-down -> old leader last.
+# With Shamir unseal (the default) each restarted node must be manually
+# unsealed before the play moves on -- the play pauses and waits for it.
+# See docs/runbook-unseal.md.
+
+- name: UPGRADE | roll standbys, then the leader
+  hosts: bao
+  become: true
+  serial: 1
+  order: inventory
+  tasks:
+    - name: Require target version
+      ansible.builtin.assert:
+        that: bao_version is defined
+        fail_msg: "Pass -e bao_version=<target version>"
+
+    - name: Check node health / leadership
+      ansible.builtin.uri:
+        url: "https://{{ inventory_hostname }}:8200/v1/sys/health?standbyok=true&sealedcode=299&uninitcode=299"
+        ca_path: /etc/openbao/tls/ca.crt
+        status_code: [200, 299, 429, 472, 473]
+      register: health
+      # TODO(lab): confirm OpenBao health status-code semantics (design §12.3)
+
+    - name: Step down if this node is the active leader
+      ansible.builtin.command: bao operator step-down
+      environment:
+        BAO_ADDR: "https://{{ inventory_hostname }}:8200"
+        BAO_CACERT: /etc/openbao/tls/ca.crt
+      when: health.status == 200
+      changed_when: true
+
+    - name: Upgrade openbao package
+      ansible.builtin.package:
+        name: "openbao{{ '-' + bao_version if bao_version != 'latest' else '' }}"
+        state: present
+
+    - name: Restart openbao
+      ansible.builtin.systemd:
+        name: openbao
+        state: restarted
+
+    - name: Wait for API to come back (sealed is expected with Shamir)
+      ansible.builtin.wait_for:
+        port: 8200
+        host: "{{ inventory_hostname }}"
+        timeout: 120
+
+    - name: Pause for manual unseal (Shamir mode)
+      ansible.builtin.pause:
+        prompt: |
+          Node {{ inventory_hostname }} restarted on version {{ bao_version }}.
+          Unseal it now per docs/runbook-unseal.md, then press ENTER to
+          continue the rolling upgrade.
+      when: bao_unseal | default('shamir') == 'shamir'

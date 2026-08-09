@@ -1,0 +1,20 @@
+---
+# BACKUP | trigger an immediate raft snapshot (scheduled jobs are installed
+# by bao.yml / role bao_backup).
+#
+# The snapshot script runs on every node but only the active node actually
+# takes a snapshot, so this is safe to run against the whole group.
+
+- name: BACKUP | take a raft snapshot now
+  hosts: bao
+  become: true
+  tasks:
+    - name: Run snapshot script (no-op on standby nodes)
+      ansible.builtin.command: /usr/local/bin/bao-snapshot
+      register: snapshot_result
+      changed_when: "'snapshot saved' in snapshot_result.stdout"
+      failed_when: snapshot_result.rc not in [0]
+
+    - name: Show snapshot result
+      ansible.builtin.debug:
+        msg: "{{ snapshot_result.stdout_lines }}"

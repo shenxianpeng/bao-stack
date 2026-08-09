@@ -1,0 +1,31 @@
+---
+# Bootstrap the deployment CA once; idempotent via `creates:` guards.
+# Plain openssl on purpose: no collection dependencies, fully auditable.
+
+- name: Create CA directory
+  ansible.builtin.file:
+    path: "{{ ca_home }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Generate CA private key
+  ansible.builtin.command: >-
+    openssl genrsa -out {{ ca_home }}/ca.key {{ ca_key_bits }}
+  args:
+    creates: "{{ ca_home }}/ca.key"
+
+- name: Restrict CA key permissions
+  ansible.builtin.file:
+    path: "{{ ca_home }}/ca.key"
+    mode: "0600"
+
+- name: Generate self-signed CA certificate
+  ansible.builtin.command: >-
+    openssl req -x509 -new -key {{ ca_home }}/ca.key
+    -sha256 -days {{ ca_days }}
+    -subj "/CN={{ ca_cn }}"
+    -out {{ ca_home }}/ca.crt
+  args:
+    creates: "{{ ca_home }}/ca.crt"

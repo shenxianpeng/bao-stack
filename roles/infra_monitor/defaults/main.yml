@@ -1,0 +1,20 @@
+---
+# Monitoring stack: VictoriaMetrics (single-node) + Grafana + vmalert.
+# Packages are expected to be present in the local repo (air-gap principle);
+# package names below match common distro/vendor repo naming and may need
+# adjustment per target OS in the lab phase.
+monitor_packages:
+  - victoriametrics
+  - vmalert
+  - grafana
+
+vm_port: 8428
+vmalert_port: 8880
+grafana_port: 3000
+
+# Scrape interval for bao / node targets
+monitor_scrape_interval: 15s
+
+# Where provisioned assets land
+grafana_provisioning_dir: /etc/grafana/provisioning
+vmalert_rules_dir: /etc/vmalert/rules

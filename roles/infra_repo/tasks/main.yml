@@ -1,0 +1,31 @@
+---
+# Serve a local package repository over HTTP so BAO/NODE hosts can install
+# with zero external network access. Populating the repo (openbao, haproxy,
+# victoriametrics, grafana, exporters + their deps for each target OS) is
+# done by the offline-package build in ci/ -- see ci/README.md.
+
+- name: Install nginx
+  ansible.builtin.package:
+    name: nginx
+    state: present
+
+- name: Create repo directory
+  ansible.builtin.file:
+    path: "{{ repo_home }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Configure nginx repo vhost
+  ansible.builtin.template:
+    src: repo.conf.j2
+    dest: /etc/nginx/conf.d/bao-stack-repo.conf
+    mode: "0644"
+  notify: Reload nginx
+
+- name: Enable and start nginx
+  ansible.builtin.systemd:
+    name: nginx
+    state: started
+    enabled: true

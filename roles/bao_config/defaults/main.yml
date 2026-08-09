@@ -1,0 +1,21 @@
+---
+bao_cluster: main
+bao_api_port: 8200
+bao_cluster_port: 8201
+bao_ui: true
+bao_config_dir: /etc/openbao
+bao_tls_dir: /etc/openbao/tls
+bao_data_dir: /var/lib/openbao
+bao_user: openbao
+bao_group: openbao
+bao_bin: /usr/bin/bao
+
+# TLS: certs issued from the deployment CA (roles/infra_ca) via tasks/tls.yml
+bao_tls: internal-ca
+ca_home: /etc/bao-stack/ca
+cert_days: 397
+# Rotate automatically when fewer than this many days remain
+cert_renew_days: 30
+
+# Telemetry (Prometheus-compatible)
+bao_telemetry_retention: 24h

@@ -1,0 +1,9 @@
+---
+# Deployment-level self-signed CA. Signs server certificates for OpenBao
+# listeners (and anything else in the deployment that needs TLS).
+ca_home: /etc/bao-stack/ca
+ca_cn: bao-stack deployment CA
+ca_days: 3650
+ca_key_bits: 4096
+# Server certs issued from this CA (see roles/bao_config/tasks/tls.yml)
+cert_days: 397

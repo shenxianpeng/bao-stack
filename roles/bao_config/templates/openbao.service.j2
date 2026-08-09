@@ -1,0 +1,32 @@
+# OpenBao systemd unit -- managed by bao-stack (role bao_config)
+[Unit]
+Description=OpenBao - a tool for managing secrets
+Documentation=https://openbao.org/docs/
+Requires=network-online.target
+After=network-online.target
+ConditionFileNotEmpty={{ bao_config_dir }}/openbao.hcl
+
+[Service]
+Type=notify
+User={{ bao_user }}
+Group={{ bao_group }}
+ExecStart={{ bao_bin }} server -config={{ bao_config_dir }}/openbao.hcl
+ExecReload=/bin/kill --signal HUP $MAINPID
+KillMode=process
+KillSignal=SIGINT
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+LimitNOFILE=65536
+LimitMEMLOCK=infinity
+ProtectSystem=full
+ProtectHome=read-only
+PrivateTmp=yes
+PrivateDevices=yes
+NoNewPrivileges=yes
+SecureBits=keep-caps
+AmbientCapabilities=CAP_IPC_LOCK
+CapabilityBoundingSet=CAP_SYSLOG CAP_IPC_LOCK
+
+[Install]
+WantedBy=multi-user.target

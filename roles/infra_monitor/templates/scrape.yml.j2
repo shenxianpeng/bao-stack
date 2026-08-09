@@ -1,0 +1,27 @@
+# VictoriaMetrics scrape configuration (Prometheus-compatible)
+global:
+  scrape_interval: {{ monitor_scrape_interval }}
+
+scrape_configs:
+  - job_name: node
+    static_configs:
+      - targets:
+{% for host in groups['all'] %}
+          - "{{ host }}:9100"
+{% endfor %}
+
+  - job_name: openbao
+    metrics_path: /v1/sys/metrics
+    params:
+      format: [prometheus]
+    scheme: https
+    tls_config:
+      ca_file: {{ ca_home | default('/etc/bao-stack/ca') }}/ca.crt
+    # NOTE: /v1/sys/metrics requires a token unless unauthenticated metrics
+    # access is enabled in the listener. Lab task: decide the default
+    # (unauthenticated_metrics_access vs. a scoped metrics token) -- design §12.
+    static_configs:
+      - targets:
+{% for host in groups['bao'] | default([]) %}
+          - "{{ host }}:8200"
+{% endfor %}

@@ -1,0 +1,34 @@
+---
+# CERT | issue or rotate OpenBao server TLS certificates from the
+# deployment CA, one node at a time (rolling, no cluster outage).
+#
+#   ansible-playbook cert.yml                # rotate when near expiry
+#   ansible-playbook cert.yml -e cert_force=true   # force re-issue
+#
+# With Shamir unseal each restarted node needs manual unseal -- the play
+# pauses per node, same as upgrade.yml.
+
+- name: CERT | rolling certificate rotation
+  hosts: bao
+  become: true
+  serial: 1
+  tasks:
+    - name: Issue / renew server certificate from deployment CA
+      ansible.builtin.include_role:
+        name: bao_config
+        tasks_from: tls
+
+    - name: Restart openbao to pick up new certificate  # noqa: no-handler
+      ansible.builtin.systemd:
+        name: openbao
+        state: restarted
+      when: bao_cert_changed | default(false)
+
+    - name: Pause for manual unseal (Shamir mode)
+      ansible.builtin.pause:
+        prompt: |
+          Node {{ inventory_hostname }} restarted with a new certificate.
+          Unseal it per docs/runbook-unseal.md, then press ENTER.
+      when:
+        - bao_cert_changed | default(false)
+        - bao_unseal | default('shamir') == 'shamir'

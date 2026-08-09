@@ -1,0 +1,15 @@
+---
+- name: Restart vmalert
+  ansible.builtin.systemd:
+    name: vmalert
+    state: restarted
+
+- name: Restart grafana
+  ansible.builtin.systemd:
+    name: grafana-server
+    state: restarted
+
+- name: Restart victoriametrics
+  ansible.builtin.systemd:
+    name: victoriametrics
+    state: restarted

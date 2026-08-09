@@ -1,0 +1,66 @@
+---
+# RESTORE | restore a cluster from an encrypted raft snapshot.
+#
+#   Rehearsal (default -- prints the plan, verifies the artifact, changes nothing):
+#     ansible-playbook restore.yml -e snapshot_file=/var/backups/openbao/xxx.snap.age
+#
+#   Real restore (DESTRUCTIVE -- replaces the cluster's entire raft state):
+#     ansible-playbook restore.yml -e snapshot_file=... -e confirm_restore=yes
+#
+# See docs/runbook-restore.md. An untested backup is not a backup: run the
+# rehearsal against a scratch cluster regularly.
+
+- name: RESTORE | raft snapshot restore
+  hosts: bao
+  become: true
+  vars:
+    confirm_restore: "no"
+  tasks:
+    - name: Require snapshot_file
+      ansible.builtin.assert:
+        that: snapshot_file is defined
+        fail_msg: "Pass -e snapshot_file=/path/to/snapshot.snap[.age]"
+      run_once: true
+
+    - name: Verify snapshot artifact exists and is non-empty
+      ansible.builtin.stat:
+        path: "{{ snapshot_file }}"
+      register: snap_stat
+      run_once: true
+      delegate_to: "{{ groups['bao'] | first }}"
+
+    - name: Fail if artifact is missing or empty
+      ansible.builtin.assert:
+        that:
+          - snap_stat.stat.exists
+          - snap_stat.stat.size > 0
+        fail_msg: "Snapshot artifact {{ snapshot_file }} missing or empty"
+      run_once: true
+
+    - name: Rehearsal mode -- print restore plan and stop
+      ansible.builtin.debug:
+        msg:
+          - "REHEARSAL ONLY (pass -e confirm_restore=yes to execute):"
+          - "1. Decrypt {{ snapshot_file }} with the user-held backup key"
+          - "2. bao operator raft snapshot restore against the active node"
+          - "3. Cluster restarts from snapshot state; re-unseal per runbook"
+          - "4. Verify: bao status, raft peers, smoke read"
+      when: confirm_restore != "yes"
+      run_once: true
+
+    - name: End rehearsal
+      ansible.builtin.meta: end_play
+      when: confirm_restore != "yes"
+
+    # --- real restore path below -------------------------------------------
+    # TODO(lab): decrypt step for .age artifacts; snapshot restore semantics
+    # under active writes -- design doc §12.7.
+    - name: Restore snapshot on the active node
+      ansible.builtin.command: >-
+        bao operator raft snapshot restore -force {{ snapshot_file }}
+      environment:
+        BAO_ADDR: "https://{{ inventory_hostname }}:8200"
+        BAO_CACERT: /etc/openbao/tls/ca.crt
+      run_once: true
+      delegate_to: "{{ groups['bao'] | first }}"
+      changed_when: true

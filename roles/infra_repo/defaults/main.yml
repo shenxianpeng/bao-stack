@@ -1,0 +1,4 @@
+---
+# Local package repository (air-gap install source).
+repo_home: /srv/bao-stack/repo
+repo_port: 8080

@@ -1,0 +1,30 @@
+---
+# Example bao-stack inventory. `./configure` generates config.yml for you;
+# this file documents the full shape. The inventory is the single source of
+# truth: describe desired state here, playbooks converge to it.
+all:
+  children:
+
+    # INFRA: one per deployment -- monitoring, local repo, deployment CA
+    infra:
+      hosts:
+        10.0.0.10: {}
+
+    # BAO: cluster module; 3 or 5 nodes for HA
+    bao:
+      children:
+        bao_main:
+          hosts:
+            10.0.0.11: { bao_seq: 1 }
+            10.0.0.12: { bao_seq: 2 }
+            10.0.0.13: { bao_seq: 3 }
+          vars:
+            bao_cluster: main
+            bao_version: ""                     # pinned tested version, "" = latest in local repo
+            bao_unseal: shamir                  # shamir | auto (see docs/runbook-unseal.md)
+            bao_snapshot_cron: "0 */6 * * *"    # every 6 hours
+            bao_snapshot_target: /var/backups/openbao
+            bao_snapshot_age_recipient: ""      # age1... public key; PLEASE set one
+            bao_tls: internal-ca                # issued by the deployment CA
+            # bao_vip_enabled: true             # optional keepalived VIP
+            # bao_vip_address: 10.0.0.100/24

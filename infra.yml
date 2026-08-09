@@ -1,0 +1,12 @@
+---
+# INFRA module: local package repo (air-gap source), deployment CA,
+# monitoring stack (VictoriaMetrics + Grafana + vmalert).
+# One INFRA per deployment; point vars at existing infra to reuse it.
+
+- name: INFRA | local repo, CA, monitoring
+  hosts: infra
+  become: true
+  roles:
+    - { role: infra_repo, tags: [repo] }
+    - { role: infra_ca, tags: [ca] }
+    - { role: infra_monitor, tags: [monitor] }

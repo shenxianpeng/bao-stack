@@ -1,0 +1,70 @@
+---
+# bao-stack alert rules (D5): specialized for a secrets service, not a
+# generic copy-paste set. Life-and-death signals only.
+#
+# NOTE: metric names below follow the vault_* telemetry names OpenBao
+# inherited. TODO(lab): verify exact names against a live OpenBao
+# /v1/sys/metrics endpoint (design doc §12) before v0.1 release.
+
+groups:
+  - name: bao-stack
+    rules:
+      - alert: BaoNodeDown
+        expr: up{job="openbao"} == 0
+        for: 1m
+        labels: { severity: critical }
+        annotations:
+          summary: "OpenBao node {{ $labels.instance }} is unreachable"
+
+      - alert: BaoSealed
+        expr: vault_core_unsealed == 0
+        for: 1m
+        labels: { severity: critical }
+        annotations:
+          summary: "OpenBao node {{ $labels.instance }} is SEALED"
+          description: "Manual unseal required -- see runbook-unseal.md."
+
+      - alert: BaoNoActiveNode
+        expr: sum(vault_core_active) == 0
+        for: 1m
+        labels: { severity: critical }
+        annotations:
+          summary: "Cluster has no active node (leader lost)"
+
+      - alert: BaoRaftPeerLoss
+        expr: count(up{job="openbao"} == 1) < 3
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "Fewer than 3 reachable raft peers -- quorum at risk"
+
+      - alert: BaoSnapshotTooOld
+        # Freshness marker exported via node textfile collector or pushed;
+        # wiring finalized in lab phase together with the backup role.
+        expr: time() - bao_stack_last_snapshot_timestamp > 8 * 3600
+        for: 30m
+        labels: { severity: warning }
+        annotations:
+          summary: "Last successful raft snapshot is older than 8h"
+          description: "An untested/stale backup is not a backup (D4)."
+
+      - alert: BaoTlsCertExpiringSoon
+        expr: (vault_core_certificate_expiry_seconds - time()) < 30 * 86400
+        for: 1h
+        labels: { severity: warning }
+        annotations:
+          summary: "OpenBao TLS certificate expires in <30d -- run cert.yml"
+
+      - alert: BaoLeaseChurn
+        expr: rate(vault_expire_num_leases[10m]) > 100
+        for: 15m
+        labels: { severity: warning }
+        annotations:
+          summary: "Abnormal lease growth on {{ $labels.instance }}"
+
+      - alert: BaoAuditWriteFailure
+        expr: rate(vault_audit_log_request_failure[5m]) > 0
+        for: 1m
+        labels: { severity: critical }
+        annotations:
+          summary: "Audit device write failures -- OpenBao BLOCKS requests when audit fails"

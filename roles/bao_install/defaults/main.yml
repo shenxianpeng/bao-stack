@@ -1,0 +1,11 @@
+---
+# OpenBao installation. Version is pinned per release of bao-stack after the
+# CI matrix passes against it; empty string means "latest from local repo".
+bao_version: ""
+bao_user: openbao
+bao_group: openbao
+bao_config_dir: /etc/openbao
+bao_tls_dir: /etc/openbao/tls
+bao_data_dir: /var/lib/openbao
+bao_audit_dir: /var/log/openbao
+bao_bin: /usr/bin/bao

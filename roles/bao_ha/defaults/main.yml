@@ -1,0 +1,9 @@
+---
+bao_api_port: 8200
+bao_tls_dir: /etc/openbao/tls
+bao_unseal: shamir
+bao_init_shares: 5
+bao_init_threshold: 3
+# Where the one-time init output lands on the CONTROLLER (not the nodes).
+# Move it to offline storage immediately -- see docs/runbook-unseal.md.
+bao_init_out: "{{ playbook_dir }}/secrets"

@@ -1,0 +1,14 @@
+# Generated inventory (per-deployment, never committed)
+/config.yml
+
+# Init output: unseal keys + root token live here briefly -- NEVER commit
+/secrets/
+
+# Ansible
+*.retry
+
+# Editors / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
