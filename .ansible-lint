@@ -1,0 +1,15 @@
+---
+# bao-stack ansible-lint configuration
+
+skip_list:
+  # Cluster-level vars (bao_cluster, bao_api_port, bao_tls_dir, ca_home, ...)
+  # are deliberately shared across roles: the single YAML inventory is the
+  # one source of truth (design doc §1 principle 2), so users set bao_* once
+  # at group level and every role reads the same names. Per-role prefixes
+  # would force duplicating the same value under N names.
+  - var-naming[no-role-prefix]
+
+  # All playbooks use the default linear strategy; run_once is used
+  # deliberately for cluster-scoped actions (init, restore) and none of the
+  # plays set strategy: free.
+  - run-once

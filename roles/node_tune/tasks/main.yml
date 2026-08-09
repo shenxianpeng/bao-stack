@@ -13,12 +13,7 @@
       {% for key, value in node_sysctl.items() %}
       {{ key }} = {{ value }}
       {% endfor %}
-  register: sysctl_file
-
-- name: Apply sysctl settings
-  ansible.builtin.command: sysctl --system
-  when: sysctl_file.changed
-  changed_when: true
+  notify: Apply sysctl settings
 
 - name: Raise open-file limits
   ansible.builtin.copy:

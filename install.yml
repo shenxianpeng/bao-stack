@@ -6,6 +6,11 @@
 # Each stage is also runnable on its own (infra.yml / node.yml / bao.yml).
 # The whole chain is idempotent: re-running converges, never destroys.
 
-- import_playbook: infra.yml
-- import_playbook: node.yml
-- import_playbook: bao.yml
+- name: INFRA | monitoring, local repo, deployment CA
+  ansible.builtin.import_playbook: infra.yml
+
+- name: NODE | host provisioning
+  ansible.builtin.import_playbook: node.yml
+
+- name: BAO | OpenBao HA cluster
+  ansible.builtin.import_playbook: bao.yml
