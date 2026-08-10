@@ -1,0 +1,104 @@
+---
+# Fresh-install scenario (single node) from the ci/README.md matrix:
+# real playbooks against localhost, then assert cluster init, LB routing,
+# metrics, and an encrypted snapshot. Multi-node topologies come later.
+name: integration
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  fresh-install-single-node:
+    runs-on: ubuntu-latest
+    env:
+      OPENBAO_VERSION: "2.6.1"
+      BAO_ADDR: https://127.0.0.1:8200
+      BAO_CACERT: /etc/openbao/tls/ca.crt
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install ansible + helper packages
+        run: |
+          pip install ansible-core
+          sudo apt-get update -q
+          sudo apt-get install -y age jq libcap2-bin
+
+      - name: Install OpenBao package (checksum-verified)
+        run: |
+          base="https://github.com/openbao/openbao/releases/download/v${OPENBAO_VERSION}"
+          curl -sSLO "${base}/openbao_${OPENBAO_VERSION}_linux_amd64.deb"
+          curl -sSLO "${base}/checksums.txt"
+          grep " openbao_${OPENBAO_VERSION}_linux_amd64.deb$" checksums.txt | sha256sum -c -
+          sudo dpkg -i "openbao_${OPENBAO_VERSION}_linux_amd64.deb"
+          bao version
+
+      - name: Generate age backup key (user-owned key simulation)
+        run: |
+          age-keygen -o age.key 2>age.pub.txt
+          echo "AGE_RECIPIENT=$(grep -oE 'age1[a-z0-9]+' age.pub.txt)" >> "$GITHUB_ENV"
+
+      - name: INFRA | deployment CA
+        run: ansible-playbook -i ci/inventory-ci.yml infra.yml --tags ca
+
+      - name: NODE | host tuning
+        run: ansible-playbook -i ci/inventory-ci.yml node.yml --tags tune
+
+      - name: BAO | full cluster module
+        run: >-
+          ansible-playbook -i ci/inventory-ci.yml bao.yml
+          -e "bao_snapshot_age_recipient=${AGE_RECIPIENT}"
+
+      - name: Unseal and wait for active (health 200)
+        run: |
+          key="$(jq -r '.unseal_keys_b64[0]' secrets/ci-init.json)"
+          bao operator unseal "$key"
+          code=000
+          for _ in $(seq 30); do
+            code="$(curl -s -o /dev/null -w '%{http_code}' --cacert "$BAO_CACERT" "$BAO_ADDR/v1/sys/health")"
+            [ "$code" = "200" ] && break
+            sleep 2
+          done
+          echo "health=$code"
+          test "$code" = "200"
+
+      - name: HAProxy routes to the active node
+        run: |
+          code=000
+          for _ in $(seq 15); do
+            code="$(curl -s -o /dev/null -w '%{http_code}' --cacert "$BAO_CACERT" https://127.0.0.1:8443/v1/sys/health)"
+            [ "$code" = "200" ] && break
+            sleep 2
+          done
+          echo "lb health=$code"
+          test "$code" = "200"
+
+      - name: Prometheus metrics exposed (token-less)
+        run: |
+          curl -s --cacert "$BAO_CACERT" "$BAO_ADDR/v1/sys/metrics?format=prometheus" \
+            | grep -E '^vault_core_unsealed' | grep -q ' 1'
+
+      - name: Encrypted snapshot via backup.yml
+        run: |
+          jq -r '.root_token' secrets/ci-init.json | sudo tee /etc/openbao/snapshot-token >/dev/null
+          sudo chmod 600 /etc/openbao/snapshot-token
+          ansible-playbook -i ci/inventory-ci.yml backup.yml
+          sudo ls /var/backups/openbao/ | grep -E '\.snap\.age$'
+          sudo test -s /var/backups/openbao/.last-success
+
+      - name: Snapshot decrypts and is a valid raft snapshot (rehearsal seed)
+        run: |
+          artifact="$(sudo ls -1t /var/backups/openbao/*.snap.age | head -1)"
+          sudo cat "$artifact" | age -d -i age.key > restored.snap
+          # raft snapshots are gzip archives; verify integrity
+          file restored.snap | grep -q gzip
+          gzip -t restored.snap
+
+      - name: Show server log on failure
+        if: failure()
+        run: sudo journalctl -u openbao --no-pager | tail -100

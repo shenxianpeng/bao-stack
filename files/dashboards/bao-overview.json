@@ -29,6 +29,13 @@
       "targets": [{ "expr": "sum(vault_core_active)", "refId": "A" }]
     },
     {
+      "id": 8,
+      "type": "stat",
+      "title": "Raft Peers",
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 0 },
+      "targets": [{ "expr": "max(vault_raft_peers)", "refId": "A" }]
+    },
+    {
       "id": 4,
       "type": "timeseries",
       "title": "Request Handling Time",

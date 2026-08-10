@@ -14,9 +14,10 @@ KEEP="{{ bao_snapshot_keep }}"
 AGE_RECIPIENT="{{ bao_snapshot_age_recipient }}"
 TOKEN_FILE="{{ bao_snapshot_token_file }}"
 
-# Only the active node proceeds. /v1/sys/health returns HTTP 200 only when
-# initialized + unsealed + active. TODO(lab): verify status-code semantics
-# (design doc §12.3).
+# Only the active node proceeds -- not because standbys can't snapshot
+# (request forwarding works, verified on v2.6.1) but to avoid N duplicate
+# snapshots per cron tick. /v1/sys/health returns 200 only on the active
+# node (docs/lab-notes.md).
 code="$(curl -s -o /dev/null -w '%{http_code}' --cacert "$BAO_CACERT" \
         "$BAO_ADDR/v1/sys/health" || echo 000)"
 if [ "$code" != "200" ]; then
@@ -58,10 +59,10 @@ case "$TARGET" in
         install -m 0600 "$artifact" "$TARGET/$(basename "$artifact")"
         # Retention: keep the newest $KEEP artifacts
         ls -1t "$TARGET"/*.snap* 2>/dev/null | tail -n +$((KEEP + 1)) | xargs -r rm -f
+        # Freshness marker, exported by bao-stack-textfile for the
+        # snapshot-age alert (D5)
+        date +%s > "$TARGET/.last-success"
         ;;
 esac
-
-# Freshness marker for the snapshot-age alert (D5)
-date +%s > "$TARGET/.last-success" 2>/dev/null || true
 
 echo "$(date -Is) snapshot saved: $(basename "$artifact")"

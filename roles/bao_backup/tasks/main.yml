@@ -24,6 +24,24 @@
     month: "{{ bao_snapshot_cron.split()[3] }}"
     weekday: "{{ bao_snapshot_cron.split()[4] }}"
 
+- name: Ensure textfile collector directory exists
+  ansible.builtin.file:
+    path: "{{ node_exporter_textfile_dir }}"
+    state: directory
+    mode: "0755"
+
+- name: Install textfile collector script (cert expiry + snapshot age gauges)
+  ansible.builtin.template:
+    src: bao-stack-textfile.sh.j2
+    dest: /usr/local/bin/bao-stack-textfile
+    mode: "0755"
+
+- name: Schedule textfile collector
+  ansible.builtin.cron:
+    name: bao-stack textfile metrics
+    job: /usr/local/bin/bao-stack-textfile
+    minute: "*/5"
+
 - name: Warn when snapshot encryption is disabled
   ansible.builtin.debug:
     msg: >-

@@ -19,3 +19,7 @@ cert_renew_days: 30
 
 # Telemetry (Prometheus-compatible)
 bao_telemetry_retention: 24h
+# Allow token-less GET /v1/sys/metrics. Default true: metrics carry no
+# secret material and a static scraper token is worse hygiene; set false
+# to require a token (decision record: docs/lab-notes.md).
+bao_metrics_unauthenticated: true

@@ -26,11 +26,19 @@
       args:
         creates: "{{ bao_tls_dir }}/server.key"
 
+    - name: Build SAN list (IP vs DNS inventory hostnames, no duplicates)
+      ansible.builtin.set_fact:
+        bao_cert_san: >-
+          {{ 'IP:127.0.0.1,DNS:localhost'
+             if inventory_hostname in ['127.0.0.1', 'localhost']
+             else (('IP:' if inventory_hostname is match('^\d+\.\d+\.\d+\.\d+$') else 'DNS:')
+                   ~ inventory_hostname ~ ',IP:127.0.0.1,DNS:localhost') }}
+
     - name: Generate CSR with node SANs
       ansible.builtin.command: >-
         openssl req -new -key {{ bao_tls_dir }}/server.key
         -subj "/CN={{ inventory_hostname }}"
-        -addext "subjectAltName=IP:{{ inventory_hostname }},IP:127.0.0.1,DNS:localhost"
+        -addext "subjectAltName={{ bao_cert_san }}"
         -out {{ bao_tls_dir }}/server.csr
       changed_when: true
 

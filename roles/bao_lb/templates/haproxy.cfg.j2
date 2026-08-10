@@ -1,9 +1,9 @@
 # HAProxy for OpenBao -- managed by bao-stack (role bao_lb)
 #
 # Active-node routing (design D2): writes only succeed on the active node.
-# /v1/sys/health returns 200 only on the initialized, unsealed, active node;
-# standbys return 429 by default. TODO(lab): confirm status-code semantics
-# in OpenBao match the Vault-era behaviour (design doc §12.3).
+# /v1/sys/health returns 200 only on the initialized, unsealed, active node.
+# Verified against OpenBao v2.6.1 (docs/lab-notes.md): active 200,
+# standby 429, sealed 503, uninitialized 501.
 #
 # mode tcp on purpose: client TLS terminates at OpenBao itself, the LB never
 # sees plaintext (security model, principle 5). Health checks use check-ssl.

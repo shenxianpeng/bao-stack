@@ -17,9 +17,9 @@ scrape_configs:
     scheme: https
     tls_config:
       ca_file: {{ ca_home | default('/etc/bao-stack/ca') }}/ca.crt
-    # NOTE: /v1/sys/metrics requires a token unless unauthenticated metrics
-    # access is enabled in the listener. Lab task: decide the default
-    # (unauthenticated_metrics_access vs. a scoped metrics token) -- design §12.
+    # Token-less scrape: bao-stack enables unauthenticated_metrics_access
+    # on the listener by default (decision record: docs/lab-notes.md).
+    # If you set bao_metrics_unauthenticated: false, add a scoped token here.
     static_configs:
       - targets:
 {% for host in groups['bao'] | default([]) %}

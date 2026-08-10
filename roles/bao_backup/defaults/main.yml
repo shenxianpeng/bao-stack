@@ -12,6 +12,10 @@ bao_snapshot_keep: 28
 # never seen by bao-stack -- security model, principle 5.
 bao_snapshot_age_recipient: ""
 
+# Where node_exporter's textfile collector reads .prom files
+# (shared with role node_exporter)
+node_exporter_textfile_dir: /var/lib/node_exporter/textfile
+
 # Token with snapshot permission, sourced from this file on each node.
 # Lab task: replace with a response-wrapped or agent-issued short-lived
 # token flow (design §12 / upstream Operator Experience roadmap).

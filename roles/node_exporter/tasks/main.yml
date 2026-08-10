@@ -4,6 +4,21 @@
     name: "{{ node_exporter_package }}"
     state: present
 
+- name: Ensure textfile collector directory exists
+  ansible.builtin.file:
+    path: "{{ node_exporter_textfile_dir }}"
+    state: directory
+    mode: "0755"
+
+- name: Point node_exporter at the textfile directory
+  ansible.builtin.copy:
+    dest: /etc/default/node_exporter
+    mode: "0644"
+    content: |
+      # bao-stack: textfile collector for bao_stack_* gauges
+      ARGS="--collector.textfile.directory={{ node_exporter_textfile_dir }}"
+  notify: Restart node_exporter
+
 - name: Enable and start node_exporter
   ansible.builtin.systemd:
     name: node_exporter

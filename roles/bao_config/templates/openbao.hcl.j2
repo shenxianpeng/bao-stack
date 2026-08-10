@@ -23,6 +23,10 @@ listener "tcp" {
   tls_cert_file      = "{{ bao_tls_dir }}/server.crt"
   tls_key_file       = "{{ bao_tls_dir }}/server.key"
   tls_client_ca_file = "{{ bao_tls_dir }}/ca.crt"
+
+  telemetry {
+    unauthenticated_metrics_access = {{ bao_metrics_unauthenticated | lower }}
+  }
 }
 
 api_addr     = "https://{{ inventory_hostname }}:{{ bao_api_port }}"

@@ -34,7 +34,12 @@ artifact discipline referenced in the design doc.
 
 ## Status
 
-Scaffold only. Lint runs in GitHub Actions today
-(`.github/workflows/lint.yml`); the VM-based matrix lands during the lab
-phase (milestone gate 2: "MVP comes up with one command *and passes the CI
-matrix*").
+- **Running today**: lint (`.github/workflows/lint.yml`) and the
+  **fresh-install single-node scenario** (`.github/workflows/integration.yml`,
+  inventory `ci/inventory-ci.yml`) — real playbooks against the runner:
+  CA bootstrap → TLS issuance → install → init → unseal → LB routes to
+  active → token-less metrics → encrypted snapshot → decrypt & verify.
+- **Next**: 3-node topology (needs VMs or systemd containers), scale-out,
+  restore rehearsal, rolling upgrade, failure injection; OS axis beyond
+  Ubuntu (milestone gate 2: "MVP comes up with one command *and passes the
+  CI matrix*").

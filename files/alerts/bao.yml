@@ -2,9 +2,10 @@
 # bao-stack alert rules (D5): specialized for a secrets service, not a
 # generic copy-paste set. Life-and-death signals only.
 #
-# NOTE: metric names below follow the vault_* telemetry names OpenBao
-# inherited. TODO(lab): verify exact names against a live OpenBao
-# /v1/sys/metrics endpoint (design doc §12) before v0.1 release.
+# Metric names verified against a live OpenBao v2.6.1 cluster -- see
+# docs/lab-notes.md. OpenBao keeps the vault_* telemetry prefix.
+# bao_stack_* gauges come from the bao-stack-textfile collector script
+# (deployed by role bao_backup) via node_exporter's textfile collector.
 
 groups:
   - name: bao-stack
@@ -32,15 +33,20 @@ groups:
           summary: "Cluster has no active node (leader lost)"
 
       - alert: BaoRaftPeerLoss
-        expr: count(up{job="openbao"} == 1) < 3
+        expr: max(vault_raft_peers) < 3
         for: 5m
         labels: { severity: warning }
         annotations:
-          summary: "Fewer than 3 reachable raft peers -- quorum at risk"
+          summary: "Raft reports fewer than 3 peers -- quorum at risk"
+
+      - alert: BaoAutopilotUnhealthy
+        expr: vault_autopilot_healthy == 0
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "Raft autopilot reports the cluster unhealthy"
 
       - alert: BaoSnapshotTooOld
-        # Freshness marker exported via node textfile collector or pushed;
-        # wiring finalized in lab phase together with the backup role.
         expr: time() - bao_stack_last_snapshot_timestamp > 8 * 3600
         for: 30m
         labels: { severity: warning }
@@ -49,7 +55,7 @@ groups:
           description: "An untested/stale backup is not a backup (D4)."
 
       - alert: BaoTlsCertExpiringSoon
-        expr: (vault_core_certificate_expiry_seconds - time()) < 30 * 86400
+        expr: (bao_stack_cert_expiry_timestamp - time()) < 30 * 86400
         for: 1h
         labels: { severity: warning }
         annotations:

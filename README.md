@@ -1,7 +1,9 @@
 # bao-stack
 
 > **Status: design / lab phase (pre-alpha).** Nothing here is production-ready yet.
-> The full design rationale lives in [docs/design-v0.1.md](docs/design-v0.1.md) (Chinese).
+> The full design rationale lives in [docs/design-v0.1.md](docs/design-v0.1.md) (Chinese);
+> lab verification results (health codes, metric names, cluster mechanics,
+> tested against OpenBao v2.6.1) are tracked in [docs/lab-notes.md](docs/lab-notes.md).
 
 **bao-stack** is a batteries-included production distribution for
 [OpenBao](https://openbao.org) — bare-metal / VM first, one command to bring up an

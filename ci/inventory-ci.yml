@@ -1,0 +1,28 @@
+---
+# CI inventory: single-node fresh install on the GitHub Actions runner
+# itself (localhost). Exercises the real roles end to end: CA bootstrap,
+# TLS issuance, config render, init, LB routing, encrypted snapshot.
+all:
+  children:
+
+    infra:
+      hosts:
+        127.0.0.1:
+          ansible_connection: local
+
+    bao:
+      children:
+        bao_ci:
+          hosts:
+            127.0.0.1:
+              ansible_connection: local
+              bao_seq: 1
+          vars:
+            bao_cluster: ci
+            bao_unseal: shamir
+            # 1/1 so the CI job can unseal programmatically
+            bao_init_shares: 1
+            bao_init_threshold: 1
+            bao_snapshot_cron: "0 */6 * * *"
+            bao_snapshot_target: /var/backups/openbao
+            bao_tls: internal-ca

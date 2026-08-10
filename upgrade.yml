@@ -19,13 +19,14 @@
         that: bao_version is defined
         fail_msg: "Pass -e bao_version=<target version>"
 
+    # Health codes verified on OpenBao v2.6.1 (docs/lab-notes.md):
+    # 200 active / 429 standby / 503 sealed / 501 uninitialized
     - name: Check node health / leadership
       ansible.builtin.uri:
-        url: "https://{{ inventory_hostname }}:8200/v1/sys/health?standbyok=true&sealedcode=299&uninitcode=299"
+        url: "https://{{ inventory_hostname }}:8200/v1/sys/health"
         ca_path: /etc/openbao/tls/ca.crt
-        status_code: [200, 299, 429, 472, 473]
+        status_code: [200, 429, 501, 503]
       register: health
-      # TODO(lab): confirm OpenBao health status-code semantics (design §12.3)
 
     - name: Step down if this node is the active leader
       ansible.builtin.command: bao operator step-down

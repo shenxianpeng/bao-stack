@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# bao-stack textfile collector -- managed by role bao_backup.
+#
+# Exports gauges the OpenBao server does not expose itself (verified on
+# v2.6.1, docs/lab-notes.md), picked up by node_exporter's textfile
+# collector for the BaoTlsCertExpiringSoon / BaoSnapshotTooOld alerts.
+set -euo pipefail
+
+OUT_DIR="{{ node_exporter_textfile_dir }}"
+OUT="$OUT_DIR/bao_stack.prom"
+tmp="$(mktemp)"
+trap 'rm -f "$tmp"' EXIT
+
+# TLS certificate expiry (epoch seconds)
+expiry=0
+if enddate="$(openssl x509 -enddate -noout -in "{{ bao_tls_dir }}/server.crt" 2>/dev/null)"; then
+    expiry="$(date -d "${enddate#notAfter=}" +%s)"
+fi
+{
+    echo "# HELP bao_stack_cert_expiry_timestamp OpenBao server certificate notAfter (epoch seconds)"
+    echo "# TYPE bao_stack_cert_expiry_timestamp gauge"
+    echo "bao_stack_cert_expiry_timestamp $expiry"
+} >> "$tmp"
+
+# Last successful snapshot (epoch seconds; only present on local targets)
+last=0
+if [ -r "{{ bao_snapshot_target }}/.last-success" ]; then
+    last="$(cat "{{ bao_snapshot_target }}/.last-success")"
+fi
+{
+    echo "# HELP bao_stack_last_snapshot_timestamp Last successful raft snapshot (epoch seconds)"
+    echo "# TYPE bao_stack_last_snapshot_timestamp gauge"
+    echo "bao_stack_last_snapshot_timestamp $last"
+} >> "$tmp"
+
+install -m 0644 "$tmp" "$OUT"
