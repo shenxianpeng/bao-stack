@@ -97,7 +97,8 @@ jobs:
 
       - name: Snapshot decrypts and is a valid raft snapshot (rehearsal seed)
         run: |
-          artifact="$(sudo ls -1t /var/backups/openbao/*.snap.age | head -1)"
+          # glob must expand inside a root shell -- the target dir is 0700
+          artifact="$(sudo sh -c 'ls -1t /var/backups/openbao/*.snap.age' | head -1)"
           sudo cat "$artifact" | age -d -i age.key > restored.snap
           # raft snapshots are gzip archives; verify integrity
           file restored.snap | grep -q gzip
