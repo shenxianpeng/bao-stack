@@ -34,12 +34,18 @@ artifact discipline referenced in the design doc.
 
 ## Status
 
-- **Running today**: lint (`.github/workflows/lint.yml`) and the
-  **fresh-install single-node scenario** (`.github/workflows/integration.yml`,
-  inventory `ci/inventory-ci.yml`) — real playbooks against the runner:
-  CA bootstrap → TLS issuance → install → init → unseal → LB routes to
-  active → token-less metrics → encrypted snapshot → decrypt & verify.
-- **Next**: 3-node topology (needs VMs or systemd containers), scale-out,
-  restore rehearsal, rolling upgrade, failure injection; OS axis beyond
+- **Running today** (`.github/workflows/lint.yml` + `integration.yml`):
+  - lint: yamllint + ansible-lint (production profile) + shellcheck.
+  - **fresh-install, single node** (`ci/inventory-ci.yml`) — real playbooks
+    against the runner: CA bootstrap → TLS issuance → install → init →
+    unseal → LB routes to active → token-less metrics → encrypted
+    snapshot → decrypt & verify.
+  - **HA cluster, 3 nodes** (`ci/inventory-ci3.yml`) — three systemd
+    containers on a fixed-IP docker network standing in for VMs (docker is
+    the CI harness here, not a product dependency): cluster forms via
+    retry_join → exactly one active + two standbys → autopilot promotes
+    3 raft voters → HAProxy routes to active → **leader kill** → survivor
+    elected within the timeout → surviving node's HAProxy re-routes.
+- **Next**: scale-out, restore rehearsal, rolling upgrade; OS axis beyond
   Ubuntu (milestone gate 2: "MVP comes up with one command *and passes the
   CI matrix*").

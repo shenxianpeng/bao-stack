@@ -90,5 +90,5 @@ to `false` to require a token.
 - §12.7 snapshot consistency under concurrent writes (needs a write-load
   harness; snapshot restore rehearsal automation comes with it)
 - S3-compatible snapshot targets (rclone vs aws cli)
-- Multi-node CI topology (single-node fresh-install scenario is automated;
-  3-node needs VMs or containers with systemd)
+- ~~Multi-node CI topology~~ → automated: 3-node cluster in systemd
+  containers with leader-kill failure injection (ci/README.md)

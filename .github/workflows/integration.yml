@@ -107,3 +107,154 @@ jobs:
       - name: Show server log on failure
         if: failure()
         run: sudo journalctl -u openbao --no-pager | tail -100
+
+  ha-cluster-3node:
+    runs-on: ubuntu-latest
+    env:
+      OPENBAO_VERSION: "2.6.1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install ansible + docker connection plugin
+        run: |
+          pip install ansible-core
+          ansible-galaxy collection install community.docker
+          sudo apt-get update -q
+          sudo apt-get install -y jq
+
+      - name: Download OpenBao package (checksum-verified)
+        run: |
+          base="https://github.com/openbao/openbao/releases/download/v${OPENBAO_VERSION}"
+          curl -sSLO "${base}/openbao_${OPENBAO_VERSION}_linux_amd64.deb"
+          curl -sSLO "${base}/checksums.txt"
+          grep " openbao_${OPENBAO_VERSION}_linux_amd64.deb$" checksums.txt | sha256sum -c -
+          # bao CLI on the runner drives unseal/assertions from outside
+          sudo dpkg -i "openbao_${OPENBAO_VERSION}_linux_amd64.deb"
+
+      - name: Start 3 systemd containers as cluster nodes
+        run: |
+          docker network create --subnet 10.10.0.0/24 baonet
+          for i in 1 2 3; do
+            docker run -d --name "bao-ci-$i" --privileged --cgroupns=host \
+              --network baonet --ip "10.10.0.1$i" \
+              -v /sys/fs/cgroup:/sys/fs/cgroup:rw \
+              --tmpfs /run --tmpfs /run/lock \
+              geerlingguy/docker-ubuntu2404-ansible:latest
+          done
+          for i in 1 2 3; do
+            docker cp "openbao_${OPENBAO_VERSION}_linux_amd64.deb" "bao-ci-$i:/tmp/openbao.deb"
+            docker exec "bao-ci-$i" bash -c \
+              'apt-get update -q && DEBIAN_FRONTEND=noninteractive apt-get install -y \
+                 libcap2-bin cron openssl && dpkg -i /tmp/openbao.deb'
+          done
+
+      - name: INFRA | deployment CA (on node 1)
+        run: ansible-playbook -i ci/inventory-ci3.yml infra.yml --tags ca
+
+      - name: BAO | 3-node cluster module
+        run: ansible-playbook -i ci/inventory-ci3.yml bao.yml
+
+      - name: Unseal all nodes (standbys join via retry_join)
+        run: |
+          docker cp bao-ci-1:/etc/bao-stack/ca/ca.crt ci3-ca.crt
+          key="$(jq -r '.unseal_keys_b64[0]' secrets/ci3-init.json)"
+          for ip in 10.10.0.11 10.10.0.12 10.10.0.13; do
+            ok=no
+            for _ in $(seq 20); do
+              if BAO_ADDR="https://$ip:8200" BAO_CACERT="$PWD/ci3-ca.crt" \
+                   bao operator unseal "$key" >/dev/null 2>&1; then
+                ok=yes; break
+              fi
+              sleep 3
+            done
+            echo "unseal $ip: $ok"
+            test "$ok" = yes
+          done
+
+      - name: Exactly one active node, two standbys
+        run: |
+          active=0; standby=0
+          for _ in $(seq 30); do
+            active=0; standby=0
+            for ip in 10.10.0.11 10.10.0.12 10.10.0.13; do
+              c="$(curl -s -o /dev/null -w '%{http_code}' --cacert ci3-ca.crt "https://$ip:8200/v1/sys/health" || echo 000)"
+              [ "$c" = "200" ] && active=$((active + 1))
+              [ "$c" = "429" ] && standby=$((standby + 1))
+            done
+            [ "$active" = "1" ] && [ "$standby" = "2" ] && break
+            sleep 2
+          done
+          echo "active=$active standby=$standby"
+          test "$active" = "1" && test "$standby" = "2"
+
+      - name: Raft has 3 voters (autopilot promotion)
+        run: |
+          root="$(jq -r '.root_token' secrets/ci3-init.json)"
+          voters=0
+          for _ in $(seq 60); do
+            voters="$(docker exec -e BAO_ADDR=https://10.10.0.11:8200 \
+              -e BAO_CACERT=/etc/openbao/tls/ca.crt -e "BAO_TOKEN=$root" \
+              bao-ci-1 bao operator raft list-peers 2>/dev/null \
+              | grep -c 'true' || true)"
+            [ "$voters" = "3" ] && break
+            sleep 3
+          done
+          echo "voters=$voters"
+          test "$voters" = "3"
+
+      - name: HAProxy routes to the active node
+        run: |
+          code=000
+          for _ in $(seq 15); do
+            code="$(curl -s -o /dev/null -w '%{http_code}' --cacert ci3-ca.crt https://10.10.0.11:8443/v1/sys/health || echo 000)"
+            [ "$code" = "200" ] && break
+            sleep 2
+          done
+          echo "lb health=$code"
+          test "$code" = "200"
+
+      - name: Failure injection -- stop the leader, expect re-election
+        run: |
+          # find and stop the current active node
+          leader=""
+          for i in 1 2 3; do
+            c="$(curl -s -o /dev/null -w '%{http_code}' --cacert ci3-ca.crt "https://10.10.0.1$i:8200/v1/sys/health" || echo 000)"
+            [ "$c" = "200" ] && leader="$i"
+          done
+          echo "stopping leader bao-ci-$leader"
+          test -n "$leader"
+          docker stop "bao-ci-$leader"
+          # a survivor must become active (already unsealed; quorum 2/3)
+          new=""
+          for _ in $(seq 45); do
+            for i in 1 2 3; do
+              [ "$i" = "$leader" ] && continue
+              c="$(curl -s -o /dev/null -w '%{http_code}' --cacert ci3-ca.crt "https://10.10.0.1$i:8200/v1/sys/health" || echo 000)"
+              [ "$c" = "200" ] && new="$i" && break 2
+            done
+            sleep 2
+          done
+          echo "new leader: bao-ci-${new:-NONE}"
+          test -n "$new"
+          # the surviving node's HAProxy re-routes to the new active
+          code=000
+          for _ in $(seq 15); do
+            code="$(curl -s -o /dev/null -w '%{http_code}' --cacert ci3-ca.crt "https://10.10.0.1$new:8443/v1/sys/health" || echo 000)"
+            [ "$code" = "200" ] && break
+            sleep 2
+          done
+          echo "lb-after-failover health=$code"
+          test "$code" = "200"
+
+      - name: Show cluster logs on failure
+        if: failure()
+        run: |
+          docker ps -a
+          for i in 1 2 3; do
+            echo "=== bao-ci-$i ==="
+            docker exec "bao-ci-$i" journalctl -u openbao --no-pager 2>/dev/null | tail -40 || true
+          done

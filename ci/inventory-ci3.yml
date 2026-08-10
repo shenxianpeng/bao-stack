@@ -1,0 +1,33 @@
+---
+# CI inventory: 3-node HA topology. Nodes are systemd containers on a
+# docker network with fixed IPs (created by the integration workflow) --
+# docker is the CI harness simulating VMs here, not a product dependency.
+# inventory_hostname stays the node IP (templates bind/advertise it);
+# ansible_host points at the container name for the docker connection.
+all:
+  vars:
+    ansible_connection: community.docker.docker
+    ansible_python_interpreter: /usr/bin/python3
+  children:
+
+    infra:
+      hosts:
+        10.10.0.11:
+          ansible_host: bao-ci-1
+
+    bao:
+      children:
+        bao_ci3:
+          hosts:
+            10.10.0.11: { ansible_host: bao-ci-1, bao_seq: 1 }
+            10.10.0.12: { ansible_host: bao-ci-2, bao_seq: 2 }
+            10.10.0.13: { ansible_host: bao-ci-3, bao_seq: 3 }
+          vars:
+            bao_cluster: ci3
+            bao_unseal: shamir
+            # 1/1 so the CI job can unseal programmatically
+            bao_init_shares: 1
+            bao_init_threshold: 1
+            bao_snapshot_cron: "0 */6 * * *"
+            bao_snapshot_target: /var/backups/openbao
+            bao_tls: internal-ca
