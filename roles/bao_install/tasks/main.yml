@@ -25,9 +25,13 @@
     owner: "{{ bao_user }}"
     group: "{{ bao_group }}"
     mode: "{{ item.mode }}"
+  # Config/TLS dirs are world-traversable so non-root clients (operators
+  # running `bao status`, scrapers, health checks) can read ca.crt -- the CA
+  # cert is public material by definition. Secrets stay locked down at the
+  # file level: server.key 0600, data dir 0700.
   loop:
-    - { path: "{{ bao_config_dir }}", mode: "0750" }
-    - { path: "{{ bao_tls_dir }}", mode: "0750" }
+    - { path: "{{ bao_config_dir }}", mode: "0755" }
+    - { path: "{{ bao_tls_dir }}", mode: "0755" }
     - { path: "{{ bao_data_dir }}", mode: "0700" }
     - { path: "{{ bao_audit_dir }}", mode: "0750" }
 
